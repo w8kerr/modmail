@@ -60,6 +60,9 @@ if sys.platform == "win32":
     except AttributeError:
         logger.error("Failed to use WindowsProactorEventLoopPolicy.", exc_info=True)
 
+import os, ssl
+if (not os.environ.get('PYTHONHTTPSVERIFY', '') and getattr(ssl, '_create_unverified_context', None)):
+    ssl._create_default_https_context = ssl._create_unverified_context
 
 class ModmailBot(commands.Bot):
     def __init__(self):
@@ -253,6 +256,49 @@ class ModmailBot(commands.Bot):
             self.prefix,
             self.prefix,
         )
+        return None
+
+    @property
+    def verification_channel(self) -> typing.Optional[discord.TextChannel]:
+        channel_id = self.config["verification_channel_id"]
+        if channel_id is not None:
+            try:
+                channel = self.get_channel(int(channel_id))
+                if channel is not None:
+                    return channel
+            except ValueError:
+                pass
+            logger.debug("VERIFICATION_CHANNEL_ID was invalid, removed.")
+            self.config.remove("verification_channel_id")
+        if self.main_category is not None:
+            try:
+                channel = self.main_category.channels[0]
+                self.config["verification_channel_id"] = channel.id
+                logger.warning(
+                    "No verification channel set, setting #%s to be the log channel.", channel.name
+                )
+                return channel
+            except IndexError:
+                pass
+        logger.warning(
+            "No verification channel set, set one with `%sconfig set verification_channel_id <id>`.",
+            self.prefix,
+            self.prefix,
+        )
+        return None
+
+    @property
+    def v_role(self) -> typing.Optional[discord.Role]:
+        role_id = self.config["v_role_id"]
+        if role_id is not None:
+            return discord.utils.get(self.guild.roles, id=int(role_id))
+        return None
+        
+    @property
+    def b_role(self) -> typing.Optional[discord.Role]:
+        role_id = self.config["b_role_id"]
+        if role_id is not None:
+            return discord.utils.get(self.guild.roles, id=int(role_id))
         return None
 
     @property

@@ -1,5 +1,6 @@
 import asyncio
 import re
+import pprint
 from datetime import datetime
 from itertools import zip_longest
 from typing import Optional, Union
@@ -18,7 +19,7 @@ from core import checks
 from core.models import DMDisabled, PermissionLevel, SimilarCategoryConverter, getLogger
 from core.paginator import EmbedPaginatorSession
 from core.thread import Thread
-from core.time import UserFriendlyTime, human_timedelta
+from core.time import UserFriendlyTime, UserFriendlyTimeSync, human_timedelta
 from core.utils import *
 
 logger = getLogger(__name__)
@@ -93,7 +94,10 @@ class Modmail(commands.Cog):
             title="Friendly Reminder",
             description=f"You may use the `{self.bot.prefix}config set log_channel_id "
             "<channel-id>` command to set up a custom log channel, then you can delete this default "
-            f"{log_channel.mention} log channel.",
+            f"{log_channel.mention} log channel.\n"
+            f"Use `{self.bot.prefix}config set verification_channel_id <channel-id>` to set a separate channel for verifications.\n"
+            f"Use `{self.bot.prefix}config set v_role_id <role-id>` to set the role granted for `{self.bot.prefix}v` verifications.\n"
+            f"Use `{self.bot.prefix}config set b_role_id <role-id>` to set the role granted for `{self.bot.prefix}b` verifications.\n",
             color=self.bot.main_color,
         )
 
@@ -363,6 +367,102 @@ class Modmail(commands.Cog):
         embed.timestamp = after.dt
 
         await ctx.send(embed=embed)
+
+    @commands.command()
+    @checks.has_permissions(PermissionLevel.SUPPORTER)
+    @checks.thread_only()
+    async def v(self, ctx, *, after: UserFriendlyTime = None):
+        # Add role, if possible
+        v_role = self.bot.v_role
+        if v_role is not None:
+            member = self.bot.guild.get_member(ctx.thread.recipient.id)
+            await discord.Member.add_roles(member, v_role)
+        else:
+            await ctx.channel.send("Failed to set role, v_role_id is not defined")
+            return
+
+        # Find the most recent image
+        messages = await ctx.channel.history(limit=200).flatten()
+        imageURL = "(No image)"
+        for message in messages:
+            if message.embeds and message.embeds[0].image:
+                imageURL = message.embeds[0].image.url
+                break
+
+        # Record verification in verification channel
+        if self.bot.verification_channel is not None:
+            # Send the user's handle and picture
+            desc = f"{ctx.thread.recipient.__str__()}\nID: {ctx.thread.recipient.id}\n{imageURL}"
+            if v_role:
+                desc += f"\nRole granted: {v_role.name}"
+            embed = discord.Embed(color=self.bot.main_color, description=desc)
+            if imageURL != "(No image)":
+                embed.set_image(url=imageURL)
+            await self.bot.verification_channel.send(embed=embed)
+        else:
+            await ctx.send(embed=discord.Embed(color=self.bot.main_color, description="No verification channel is set"))
+
+        # Set default close message
+        if after is None:
+            converter = UserFriendlyTimeSync()
+            after = converter.convert(None, "Verified, thank you!")
+        
+        # Close the channel 
+        await self.close(ctx, after=after)
+        
+    @commands.command()
+    @checks.has_permissions(PermissionLevel.SUPPORTER)
+    @checks.thread_only()
+    async def b(self, ctx, *, after: UserFriendlyTime = None):
+        # Add role, if possible
+        v_role = self.bot.v_role
+        if v_role is not None:
+            member = self.bot.guild.get_member(ctx.thread.recipient.id)
+            await discord.Member.add_roles(member, v_role)
+        else:
+            await ctx.channel.send("Failed to set role, v_role_id is not defined")
+            return
+            
+        b_role = self.bot.b_role
+        if b_role is not None:
+            member = self.bot.guild.get_member(ctx.thread.recipient.id)
+            await discord.Member.add_roles(member, b_role)
+        else:
+            await ctx.channel.send("Failed to set role, b_role_id is not defined")
+            return
+
+        # Find the most recent image
+        messages = await ctx.channel.history(limit=200).flatten()
+        imageURL = "(No image)"
+        for message in messages:
+            if message.embeds and message.embeds[0].image:
+                imageURL = message.embeds[0].image.url
+                break
+
+        # Record verification in verification channel
+        if self.bot.verification_channel is not None:
+            # Send the user's handle and picture
+            desc = f"{ctx.thread.recipient.__str__()}\nID: {ctx.thread.recipient.id}\n{imageURL}"
+            if v_role is not None and b_role is None:
+                desc += f"\nRole granted: {v_role.name}"
+            if v_role is None and b_role is not None:
+                desc += f"\nRole granted: {v_role.name}"
+            if v_role is not None and b_role is not None:
+                desc += f"\nRoles granted: {v_role.name}, {b_role.name}"
+            embed = discord.Embed(color=self.bot.main_color, description=desc)
+            if imageURL != "(No image)":
+                embed.set_image(url=imageURL)
+            await self.bot.verification_channel.send(embed=embed)
+        else:
+            await ctx.send(embed=discord.Embed(color=self.bot.main_color, description="No verification channel is set"))
+
+        # Set default close message
+        if after is None:
+            converter = UserFriendlyTimeSync()
+            after = converter.convert(None, "Verified, thank you!")
+        
+        # Close the channel 
+        await self.close(ctx, after=after)
 
     @commands.command(usage="[after] [close message]")
     @checks.has_permissions(PermissionLevel.SUPPORTER)
@@ -941,6 +1041,12 @@ class Modmail(commands.Cog):
     @checks.has_permissions(PermissionLevel.REGULAR)
     async def selfcontact(self, ctx):
         """Creates a thread with yourself"""
+        await ctx.invoke(self.contact, user=ctx.author)
+
+    @commands.command()
+    @checks.has_permissions(PermissionLevel.REGULAR)
+    async def testcommand(self, ctx):
+        """Creates a TEST thread with yourself"""
         await ctx.invoke(self.contact, user=ctx.author)
 
     @commands.command(usage="<user> [category] [options]")

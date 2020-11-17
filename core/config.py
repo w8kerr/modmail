@@ -42,6 +42,9 @@ class ConfigManager:
         "plain_reply_without_command": False,
         # logging
         "log_channel_id": None,
+        "verification_channel_id": None,
+        "v_role_id": None,
+        "b_role_id": None,
         "mention_channel_id": None,
         # threads
         "sent_emoji": "✅",
